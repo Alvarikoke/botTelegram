@@ -1,6 +1,7 @@
 import os
 import requests
 import telebot
+from dbController import Database
 
 BOT_TOKEN = os.getenv('TOKEN')
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -124,6 +125,7 @@ def photo(message):
         if trip_name is None or '':
             bot.send_message(message, "Por favor, tienes que asignar la fotografía a un nuevo viaje, puedes hacerlo usando el comando /nuevo .")
         elif trips[chat_id]['location']:
+            print(trips)
             photo_num = trips[chat_id]['photo_num'] + 1
             trips[chat_id]['photo_num'] = photo_num
 
@@ -155,6 +157,7 @@ def photo(message):
                 print(file_name)
                 with open(file_name, "wb") as f:
                     f.write(response.content)
+                insertPhotoDB(url, file_name)
                 bot.reply_to(message, "La foto ha sido almacenada.")
             else:
                 bot.reply_to(message, "Error al descargar la foto.")
@@ -162,5 +165,38 @@ def photo(message):
             bot.reply_to(message, "Por favor, active la ubicación en tiempo real antes de enviar fotos.")
     except KeyError:
         bot.send_message(chat_id, "Por favor, tienes que asignar la fotografía a un viaje, puedes hacerlo usando el comando \"/nuevo\".")
+
+def insertPhotoDB(url, file_name):
+    with Database() as db:
+        file_name_parts = file_name.split('_')
+        # Insertar registro en la tabla images
+        imageData = {
+            'image_url': url,
+            'latitude': file_name_parts[2],
+            'longitude': file_name_parts[3],
+            'image_name': file_name_parts[4],
+        }
+        idImage = db.create('images', imageData)
+
+        # Insertar registro en la tabla trips
+        tripData = {
+            'trip_name': file_name_parts[1],
+        }
+        idTrip = db.create('trips', tripData)
+
+        # Insertar registro en la tabla users
+        userData = {
+            'chat_id': file_name_parts[0],
+        }
+        idUser = db.create('users', userData)
+
+        # Insertar registro en la tabla principal
+        principalData = {
+            'user_id': idUser,
+            'trip_id': idTrip,
+            'image_id': idImage,
+        }
+        db.create('principal', principalData)
+
 
 bot.polling()
