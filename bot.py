@@ -36,12 +36,20 @@ def handle_command(message):
         trips[chat_id] = {'name': '', 'location': None, 'photo_num': 0}
         bot.register_next_step_handler(message, new_trip)
     elif command == 'ayuda':
-        bot.reply_to(message, "Para poder mandarnos tu ubicación en tiempo real dale al clip al lado del cuadro de mensaje y selecciona \"Ubicación\", que tendrá un icono de un globo como el de Google Maps. Una vez le hayas dado a \"Ubicación\" presiona \"Ubicación en tiempo real\". Si es la primera vez que lo haces, probablemente tu dispositivo te pida configurar los permisos, hazlo en el menú de ajustes de tu teléfono y vuelve a la aplicación cuando lo hayas hecho.\n\nEn Apple, cuando le des a compartir la ubicación en tiempo real le tendrás que dar a \"Usar mientras se usa la app\".\n\nSi estás en Android selecciona \"Permitir siempre\".\n\nSi necesitas más ayuda puedes usar el comando \"/fotosAndroid\" si posees un terminal Android; o \"/fotosApple\" si posees un terminal de Apple.")
-    elif command == 'fotosAndroid':
-        url = "https://api.telegram.org/bot6161072676%3AAAHw9L8yedEKZv11gxbjQhO2yv1APXkrjOU/sendPhoto"
+        bot.reply_to(message, "Para poder mandarnos tu ubicación en tiempo real dale al clip al lado del cuadro de mensaje y selecciona \"Ubicación\", que tendrá un icono de un globo como el de Google Maps. Una vez le hayas dado a \"Ubicación\" presiona \"Ubicación en tiempo real\". Si es la primera vez que lo haces, probablemente tu dispositivo te pida configurar los permisos, hazlo en el menú de ajustes de tu teléfono y vuelve a la aplicación cuando lo hayas hecho.\n\nEn Apple, cuando le des a compartir la ubicación en tiempo real le tendrás que dar a \"Usar mientras se usa la app\".\n\nSi estás en Android selecciona \"Permitir siempre\".\n\nSi necesitas más ayuda puedes usar el comando \"/android\" si posees un terminal Android; o \"/apple\" si posees un terminal de Apple.")
+    elif command == 'android':
+        bot.reply_to(message, "Aquí tienes capturas de pantalla explicando cómo activar la ubicación en tiempo real en su dispositivo Android:")
 
-        payload = {
-            "photo": "https://pbs.twimg.com/media/FwJzCV4WwAM9Nkd?format=jpg&name=small",
+        url = "https://api.telegram.org/bot" + BOT_TOKEN +"/sendPhoto"
+
+        foto1 = {
+            "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Android_logo_2019_%28stacked%29.svg/1200px-Android_logo_2019_%28stacked%29.svg.png",
+            "disable_notification": False,
+            "reply_to_message_id": None,
+            "chat_id": chat_id
+        }
+        foto2 = {
+            "photo": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Android_logo_2019_%28stacked%29.svg/1200px-Android_logo_2019_%28stacked%29.svg.png",
             "disable_notification": False,
             "reply_to_message_id": None,
             "chat_id": chat_id
@@ -51,15 +59,20 @@ def handle_command(message):
             "content-type": "application/json"
         }
 
-        response = requests.post(url, json=payload, headers=headers)
+        responseFoto1 = requests.post(url, json=foto1, headers=headers)
+        bot.send_message(chat_id, "Después haga esto:")
+        responseFoto2 = requests.post(url, json=foto2, headers=headers)
 
-        print(response.text)
+        print(responseFoto1.text)
+        print(responseFoto2.text)
 
-    elif command == 'fotosApple':
+    elif command == 'apple':
+        bot.reply_to(message, "Fotos:")
+
         url = "https://api.telegram.org/bot" + BOT_TOKEN +"/sendPhoto"
 
         payload = {
-            "photo": "https://pbs.twimg.com/media/FwJzCV4WwAM9Nkd?format=jpg&name=small",
+            "photo": "https://www.apple.com/ac/structured-data/images/open_graph_logo.png?202209050149",
             "disable_notification": False,
             "reply_to_message_id": None,
             "chat_id": chat_id
@@ -73,6 +86,9 @@ def handle_command(message):
 
         response = requests.post(url, json=payload, headers=headers)
         print(response.text)
+    else:
+        bot.reply_to(message, "No existe ese comando. Puedes ver una lista de comandos en el \"Menú\" (a la izquierda de donde se escriben los mensajes).")
+
 
 # Creacion de un nuevo viaje
 def new_trip(message):
@@ -102,7 +118,7 @@ def photo(message):
     print('-------------')
     print('Handle Photo')
     chat_id = message.chat.id
-    # Aunque la ubicacion en tiempo real ya este activada de antes te requerira activarla de nuevo. Telegram no tiene forma de saber si esta o no esta activada
+
     try:
         trip_name = trips[chat_id]['name']
         if trip_name is None or '':
@@ -117,6 +133,17 @@ def photo(message):
             file_info = bot.get_file(file_id)
             file_path = file_info.file_path
 
+            # Obtener la latitud y longitud
+            lat = trips[chat_id]['location'].split(',')[0]
+            lon = trips[chat_id]['location'].split(',')[1]
+
+            # Eliminar espacios y paréntesis
+            trip_name = trip_name.replace(' ', '')
+            lat = lat.replace(' ', '')
+            lon = lon.replace(' ', '')
+            lat = lat.replace('(', '')
+            lon = lon.replace(')', '')
+
             # Construir la URL del archivo de la foto
             url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
             print('URL de la foto: ' + url)
@@ -124,7 +151,7 @@ def photo(message):
             # Descargar y almacenar la foto
             response = requests.get(url)
             if response.status_code == 200:
-                file_name = f"{chat_id}_{trip_name}_{photo_num}.jpg"
+                file_name = f"{chat_id}_{trip_name}_{lat}_{lon}_{photo_num}.jpg"
                 print(file_name)
                 with open(file_name, "wb") as f:
                     f.write(response.content)
