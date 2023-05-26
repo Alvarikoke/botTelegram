@@ -47,9 +47,7 @@ class Database:
         if condition:
             query += f" WHERE {condition}"
         self.cursor.execute(query)
-        rows = self.cursor.fetchall()
-        for row in rows:
-            print(row)
+        return self.cursor.fetchall()
 
     def update(self, table, data, condition):
         columns = ', '.join([f"{key} = %s" for key in data.keys()])
