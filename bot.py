@@ -2,7 +2,7 @@ import os
 import requests
 import telebot
 from telebot import types
-import hashlib
+import urllib.parse
 from dbController import Database
 
 BOT_TOKEN = os.getenv('TOKEN')
@@ -39,7 +39,7 @@ def handle_photo(message):
         if location.get('latitude') is not None and location.get('longitude') is not None:
             check_location_sent(message)
         else:
-            bot.send_message(chat_id, "Por favor, active la ubicación en tiempo real antes de enviar fotos.")
+            bot.send_message(chat_id, "Por favor, comparte tu ubicación antes de enviar fotos.")
 
 
 @bot.message_handler(func=lambda message: True, content_types=['location'])
@@ -52,7 +52,6 @@ def handle_command(message):
 
     if command == 'start':
         chat_id = str(message.chat.id)
-
         bot.reply_to(message, "Te damos la bienvenida a \"My Trip Memories\", un bot de Telegram con el que podrás enviar las fotos de tu viaje y poder verlas en un vistoso mapa en nuestra web:\nlocalhost:3000/registro.html?id=" + chat_id + "\n\nSi es tu primera vez presiona el comando \"/nuevo\" para crear un nuevo viaje.\n\nRecuerda que tendrás que ponerle un nombre y que éste no puede empezar por \"/\".\n\nUna vez hayas introducido el nombre del viaje tendrás que compartir tu ubicación, lo que nos ayudará a posicionar tus fotos en el mapa.\n\nSi necesitas ayuda para poder enviar la ubicación presiona el comando \"/ayuda\".\n\nUna vez lo hayas hecho simplemente envía tus fotos y disfruta del viaje :)")
     elif command == 'nuevo':
         bot.reply_to(message, "¿Cómo quieres llamar al viaje?")
@@ -118,15 +117,19 @@ def new_trip(message):
     print('-------------')
     print('Handle New Trip')
     chat_id = message.chat.id
-    trip_name = message.text
-    if trip_name.startswith('/'):
-        bot.reply_to(message, "Por favor, usa un nombre que no empiece por \"/\".\n\nPulse de nuevo en \"/nuevo\" para intentarlo con otro nombre.")
+    if message.text is None or message.text == '':
+        bot.reply_to(message, "Tienes que enviar texto.\n\nPulse otra vez en \"/nuevo\" para volver a intentarlo.")
     else:
-        trips[chat_id]['name'] = trip_name
-        current_trip_ids[chat_id] = trip_name  # Associate the trip name with the chat_id
-        print('Nombre del viaje: ' + trip_name)
-        ask_location(message)
-        # bot.reply_to(message, "Por favor, active la ubicación en tiempo real.\n\nSi tiene problemas para activarla presione el comando \"/ayuda\".")
+        trip_name = urllib.parse.quote(message.text)
+        if len(trip_name) > 50:
+            bot.reply_to(message, "El nombre del viaje no puede superar los 50 caracteres.\n\nPulse otra vez en \"/nuevo\" para introducir uno más corto.")
+        elif trip_name.startswith('/'):
+            bot.reply_to(message, "Por favor, usa un nombre que no empiece por \"/\".\n\nPulse otra vez en \"/nuevo\" para intentarlo con otro nombre.")
+        else:
+            trips[chat_id]['name'] = trip_name
+            current_trip_ids[chat_id] = trip_name  # Associate the trip name with the chat_id
+            print('Nombre del viaje: ' + trip_name)
+            ask_location(message)
 
 def ask_location(message):
     keyboard = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
@@ -136,7 +139,8 @@ def ask_location(message):
 
 def set_location(bot, message):
     print('-------------')
-    print('Handle Live Location')
+    print('Handle Location')
+    print("Latitud: " + str(message.location.latitude) + "\nLongitud: " + str(message.location.longitude))
     chat_id = message.chat.id
     try:
         trip_name = current_trip_ids.get(chat_id)  # Get the trip name associated with the chat_id
@@ -151,7 +155,7 @@ def set_location(bot, message):
             location_sent = True
             bot.send_message(chat_id, "Se ha registrado su ubicación actual.\n\nEnvía una foto.")
     except KeyError:
-        bot.send_message(chat_id, "Por favor, antes de enviar una ubicación tienes que crear un viaje, puedes hacerlo usando el comando /nuevo.")
+        bot.send_message(chat_id, "Por favor, antes de enviar una ubicación tienes que crear un viaje. Puedes hacerlo usando el comando /nuevo.")
 
 def check_location_sent(message):
     global location_sent
@@ -176,21 +180,21 @@ def photo(message):
             photo_num = trips[chat_id]['photo_num'] + 1
             trips[chat_id]['photo_num'] = photo_num
 
-            # Obtener información del archivo de la foto
+            # Get the information of the photo
             file_id = message.photo[-1].file_id
             print(file_id)
             file_info = bot.get_file(file_id)
             file_path = file_info.file_path
 
-            # Get the current live location
+            # Get the current location
             lat = location['latitude']
             lon = location['longitude']
 
-            # Construir la URL del archivo de la foto
+            # Build the URL of the file
             url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
             print('URL de la foto: ' + url)
 
-            # Descargar y almacenar la foto
+            # Download and store the photo
             response = requests.get(url)
             if response.status_code == 200:
                 file_name = f"{chat_id}_{trip_name}_{lat}_{lon}_{photo_num}.jpg"
@@ -198,10 +202,6 @@ def photo(message):
                 with open(file_name, "wb") as f:
                     f.write(response.content)
                 insertPhotoDB(url, file_name)
-
-                # Update the location with the new coordinates
-                trips[chat_id]['location']['latitude'] = lat
-                trips[chat_id]['location']['longitude'] = lon
 
                 global location_sent
                 location_sent = False
@@ -225,7 +225,7 @@ def insertPhotoDB(url, file_name):
         chat_id = file_name_parts[0]
 
         # Check if the trip name already exists in the trips table
-        trips = db.read('trips', f"trip_name = '{trip_name}'")
+        trips = db.readTrips(trip_name, chat_id)
         if len(trips) == 0:
             # Insert the trip record if it doesn't exist
             tripData = {
@@ -233,7 +233,7 @@ def insertPhotoDB(url, file_name):
             }
             idTrip = db.create('trips', tripData)
         else:
-            idTrip = trips[0][0]  # Get the ID of the existing trip
+            idTrip = trips[0][6]  # Get the ID of the existing trip
 
         # Check if the chat ID already exists in the users table
         users = db.read('users', f"chat_id = '{chat_id}'")
@@ -255,7 +255,7 @@ def insertPhotoDB(url, file_name):
         }
         idImage = db.create('images', imageData)
 
-        # Insert the principal record if it doesn't exist
+        # Insert the principal record
         principal = db.read('principal', f"user_id = {idUser} AND trip_id = {idTrip} AND image_id = {idImage}")
         if len(principal) == 0:
             principalData = {
